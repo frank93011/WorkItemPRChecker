@@ -19,7 +19,7 @@ public static class WorkItemCommitDifferenceFunction
     public static async Task<object> Run(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req, TraceWriter log)
     {
-        string PAT = Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
+        string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
         log.Info("TEST: " + PAT);
 
 
