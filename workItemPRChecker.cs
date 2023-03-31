@@ -62,7 +62,6 @@ public static class WorkItemCommitDifferenceFunction
 
         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
         dynamic data = JsonConvert.DeserializeObject(requestBody);
-        // log.Info("Data Received: " + data.ToString());
 
         string eventType = req.Headers["X-GitHub-Event"];
         // if (eventType != "pull_request")
@@ -72,15 +71,13 @@ public static class WorkItemCommitDifferenceFunction
 
         string repositoryName = data.resource.repository.name;
         string pullRequestUrl = data.resource.url;
-        string pullRequestId = data.resource.pullRequestId;
-        string branchName = data.resource.sourceRefName;
+        string currentPrId = data.resource.pullRequestId;
+        string sourceRefName = data.resource.sourceRefName;
         string repositoryUrl = data.resource.repository.url;
         string repoId = data.resource.repository.id;
         string projectId = data.resource.repository.project.id;
         string organization = repositoryUrl.Split('/')[3];
-
-        // var commits = await GetCommitsFromPR(org, , PAT);
-        // log.Info("commits Received: " + commits.ToString());
+        string currentBranch = sourceRefName.Split('/')[2];
 
         var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
         log.Info("workItems Received: " + workItems.ToString());
@@ -88,16 +85,14 @@ public static class WorkItemCommitDifferenceFunction
         var prIds = await GetPrIdsFromWorkItems(workItems, organization, projectId, PAT);
         log.Info("PRs Received: " + prIds.ToString());
 
-        HashSet<string> relatedCommits = new HashSet<string>();
+        List<string> relatedCommits = await GetRelatedCommitsFromPRs(prIds, currentPrId, organization, projectId, repoId, PAT);
+
+        string[] targetBranchs = { "main", "SIT", "PROD" };
         string responseMessage = "";
-        foreach (var prId in prIds)
+        foreach (string targetBranch in targetBranchs)
         {
-            var commits = await GetCommitsFromPR(organization, projectId, repoId, prId, PAT);
-            commits.ForEach(commit =>
-            {
-                relatedCommits.Add(commit.commitId);
-                responseMessage += commit.commitId + '\n';
-            });
+            responseMessage += await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
+            responseMessage += "--------------\n";
         }
 
         return new OkObjectResult($"{responseMessage}");
@@ -127,6 +122,21 @@ public static class WorkItemCommitDifferenceFunction
         return commitResponse.value;
     }
 
+    private static async Task<List<string>> GetRelatedCommitsFromPRs(List<string> prIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
+    {
+        List<string> relatedCommits = new List<string>();
+        foreach (var prId in prIds)
+        {
+            if (prId == currentPrId) continue;
+            var commits = await GetCommitsFromPR(org, projectId, repoId, prId, accessToken);
+            commits.ForEach(commit =>
+            {
+                relatedCommits.Add(commit.commitId);
+            });
+        }
+        return relatedCommits;
+    }
+
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
     {
         string targetUrl = $"{pullRequestUrl}/workitems?api-version=7.0";
@@ -153,5 +163,23 @@ public static class WorkItemCommitDifferenceFunction
         }
 
         return pullRequestIds;
+    }
+
+    private static async Task<string> CompareCommitsDiffWithTargetBranch(List<string> currentCommits, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
+    {
+        HashSet<string> branchTotalCommits = new HashSet<string>();
+        string commitDiffMessege = $"[{targetBranch}] branch missing the following commits from linked workItems:\n";
+        bool hasDiff = false;
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commits?searchCriteria.itemVersion.version={targetBranch}&api-version=6.0";
+        string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
+        CommitResponse rawCommits = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
+        rawCommits.value.ForEach(commit => { branchTotalCommits.Add(commit.commitId); });
+        foreach (string commitId in currentCommits)
+        {
+            if (branchTotalCommits.Contains(commitId)) continue;
+            hasDiff = true;
+            commitDiffMessege += commitId + "\n";
+        }
+        return hasDiff ? commitDiffMessege : $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
     }
 }
