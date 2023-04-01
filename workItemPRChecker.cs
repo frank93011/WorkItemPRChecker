@@ -12,7 +12,7 @@ using Microsoft.Azure.WebJobs.Host;
 using System.Collections.Generic;
 using System.Net.Http.Headers;
 using System.Text;
-
+using System.Net;
 
 public class CommitResponse
 {
@@ -52,55 +52,72 @@ public class WorkItemRelationResponse
     public List<dynamic> relations { get; set; }
 }
 
+public class Comment
+{
+    public int parentCommentId { get; set; }
+    public string content { get; set; }
+    public int contentType { get; set; }
+}
 public static class WorkItemCommitDifferenceFunction
 {
     [FunctionName("WorkItemCommitDifferenceFunction")]
     public static async Task<object> Run(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req, TraceWriter log)
     {
-        string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
-
-        string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-        dynamic data = JsonConvert.DeserializeObject(requestBody);
-        // log.Info("Data Received: " + data.ToString());
-
-        string eventType = req.Headers["X-GitHub-Event"];
-        // if (eventType != "pull_request")
-        // {
-        //     return new OkObjectResult("Not a pull request event.");
-        // }
-
-        string repositoryName = data.resource.repository.name;
-        string pullRequestUrl = data.resource.url;
-        string pullRequestId = data.resource.pullRequestId;
-        string branchName = data.resource.sourceRefName;
-        string repositoryUrl = data.resource.repository.url;
-        string repoId = data.resource.repository.id;
-        string projectId = data.resource.repository.project.id;
-        string organization = repositoryUrl.Split('/')[3];
-
-        // var commits = await GetCommitsFromPR(org, , PAT);
-        // log.Info("commits Received: " + commits.ToString());
-
-        var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
-        log.Info("workItems Received: " + workItems.ToString());
-
-        var prIds = await GetPrIdsFromWorkItems(workItems, organization, projectId, PAT);
-        log.Info("PRs Received: " + prIds.ToString());
-
-        HashSet<string> relatedCommits = new HashSet<string>();
-        string responseMessage = "";
-        foreach (var prId in prIds)
+        try
         {
-            var commits = await GetCommitsFromPR(organization, projectId, repoId, prId, PAT);
-            commits.ForEach(commit =>
-            {
-                relatedCommits.Add(commit.commitId);
-                responseMessage += commit.commitId + '\n';
-            });
-        }
+            string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
 
-        return new OkObjectResult($"{responseMessage}");
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            dynamic data = JsonConvert.DeserializeObject(requestBody);
+
+            string eventType = req.Headers["X-GitHub-Event"];
+            // if (eventType != "pull_request")
+            // {
+            //     return new OkObjectResult("Not a pull request event.");
+            // }
+
+            string repositoryName = data.resource.repository.name;
+            string pullRequestUrl = data.resource.url;
+            string currentPrId = data.resource.pullRequestId;
+            string sourceRefName = data.resource.sourceRefName;
+            string repositoryUrl = data.resource.repository.url;
+            string repoId = data.resource.repository.id;
+            string projectId = data.resource.repository.project.id;
+            string organization = repositoryUrl.Split('/')[3];
+            string currentBranch = sourceRefName.Split('/')[2];
+
+            var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
+            log.Info("workItems Received: " + workItems.ToString());
+
+            var prIds = await GetPrIdsFromWorkItems(workItems, organization, projectId, PAT);
+            log.Info("PRs Received: " + prIds.ToString());
+
+            List<string> relatedCommits = await GetRelatedCommitsFromPRs(prIds, currentPrId, organization, projectId, repoId, PAT);
+
+            string[] targetBranchs = { "main", "SIT", "PROD" };
+            string responseMessage = "";
+            bool hasDiff = false;
+            foreach (string targetBranch in targetBranchs)
+            {
+                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
+                hasDiff |= res.Item1;
+                responseMessage += res.Item2;
+                responseMessage += "\n";
+            }
+
+            log.Info($"{responseMessage}");
+
+            PostStatusOnPullRequest(organization, projectId, repoId, currentPrId, hasDiff, PAT);
+            if (hasDiff) PostCommentOnPullRequest(organization, projectId, repoId, currentPrId, responseMessage, PAT);
+
+            return new OkObjectResult($"{responseMessage}");
+        }
+        catch (Exception ex)
+        {
+            log.Error(ex.ToString());
+            return new BadRequestObjectResult(ex.ToString());
+        }
     }
 
 
@@ -125,6 +142,21 @@ public static class WorkItemCommitDifferenceFunction
         var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
 
         return commitResponse.value;
+    }
+
+    private static async Task<List<string>> GetRelatedCommitsFromPRs(List<string> prIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
+    {
+        List<string> relatedCommits = new List<string>();
+        foreach (var prId in prIds)
+        {
+            if (prId == currentPrId) continue;
+            var commits = await GetCommitsFromPR(org, projectId, repoId, prId, accessToken);
+            commits.ForEach(commit =>
+            {
+                relatedCommits.Add(commit.commitId);
+            });
+        }
+        return relatedCommits;
     }
 
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
@@ -153,5 +185,86 @@ public static class WorkItemCommitDifferenceFunction
         }
 
         return pullRequestIds;
+    }
+
+    private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<string> currentCommits, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
+    {
+        HashSet<string> branchTotalCommits = new HashSet<string>();
+        string commitDiffMessege = $"[{targetBranch}] branch missing the following commits from linked workItems:\n";
+        bool hasDiff = false;
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commits?searchCriteria.itemVersion.version={targetBranch}&api-version=6.0";
+        string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
+        CommitResponse rawCommits = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
+        rawCommits.value.ForEach(commit => { branchTotalCommits.Add(commit.commitId); });
+        foreach (string commitId in currentCommits)
+        {
+            if (branchTotalCommits.Contains(commitId)) continue;
+            hasDiff = true;
+            commitDiffMessege += $"- {commitId} \n";
+        }
+        string message = hasDiff ? commitDiffMessege : $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
+        return new Tuple<bool, string>(hasDiff, message);
+    }
+
+    private static void PostToClient(string targetUrl, string message, string accessToken)
+    {
+        using (HttpClient client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
+                    ASCIIEncoding.ASCII.GetBytes(
+                    string.Format("{0}:{1}", "", accessToken))));
+
+            var method = new HttpMethod("POST");
+            var request = new HttpRequestMessage(method, targetUrl)
+            {
+                Content = new StringContent(message, Encoding.UTF8, "application/json")
+            };
+
+            using (HttpResponseMessage response = client.SendAsync(request).Result)
+            {
+                response.EnsureSuccessStatusCode();
+            }
+        }
+    }
+
+    private static void PostStatusOnPullRequest(string org, string projectId, string repoId, string currentPrId, bool hasDiff, string accessToken)
+    {
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/statuses?api-version=7.0";
+
+        string state = !hasDiff ? "succeeded" : "failed";
+        string description = !hasDiff ? "No commits dependency lost detected" : "Detect commits dependency lost";
+        string status = JsonConvert.SerializeObject(
+            new
+            {
+                State = state,
+                Description = description,
+                TargetUrl = "https://visualstudio.microsoft.com",
+
+                Context = new
+                {
+                    Name = "PullRequest-workItemPRChecker",
+                    Genre = "pr-azure-function-ci"
+                }
+            });
+
+        PostToClient(targetUrl, status, accessToken);
+        return;
+    }
+
+    private static void PostCommentOnPullRequest(string org, string projectId, string repoId, string currentPrId, string responseMessage, string accessToken)
+    {
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/threads?api-version=7.0";
+        List<Comment> comments = new List<Comment>();
+        comments.Add(new Comment { parentCommentId = 0, content = responseMessage, contentType = 1 });
+        string requestBody = JsonConvert.SerializeObject(
+            new
+            {
+                Comments = comments,
+                status = 1
+            });
+
+        PostToClient(targetUrl, requestBody, accessToken);
+        return;
     }
 }
