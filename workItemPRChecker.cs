@@ -52,6 +52,12 @@ public class WorkItemRelationResponse
     public List<dynamic> relations { get; set; }
 }
 
+public class Comment
+{
+    public int parentCommentId { get; set; }
+    public string content { get; set; }
+    public int contentType { get; set; }
+}
 public static class WorkItemCommitDifferenceFunction
 {
     [FunctionName("WorkItemCommitDifferenceFunction")]
@@ -102,7 +108,8 @@ public static class WorkItemCommitDifferenceFunction
 
             log.Info($"{responseMessage}");
 
-            PostStatusOnPullRequest(organization, projectId, repoId, currentPrId, ComputeStatus(hasDiff, responseMessage), PAT);
+            PostStatusOnPullRequest(organization, projectId, repoId, currentPrId, hasDiff, PAT);
+            if (hasDiff) PostCommentOnPullRequest(organization, projectId, repoId, currentPrId, responseMessage, PAT);
 
             return new OkObjectResult($"{responseMessage}");
         }
@@ -199,29 +206,8 @@ public static class WorkItemCommitDifferenceFunction
         return new Tuple<bool, string>(hasDiff, message);
     }
 
-    private static string ComputeStatus(bool hasDiff, string responseMessage)
+    private static void PostToClient(string targetUrl, string message, string accessToken)
     {
-        string state = !hasDiff ? "succeeded" : "pending";
-
-        return JsonConvert.SerializeObject(
-            new
-            {
-                State = state,
-                Description = responseMessage,
-                TargetUrl = "https://visualstudio.microsoft.com",
-
-                Context = new
-                {
-                    Name = "PullRequest-workItemPRChecker",
-                    Genre = "pr-azure-function-ci"
-                }
-            });
-    }
-
-    private static void PostStatusOnPullRequest(string org, string projectId, string repoId, string currentPrId, string status, string accessToken)
-    {
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/statuses?api-version=4.1";
-
         using (HttpClient client = new HttpClient())
         {
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -232,7 +218,7 @@ public static class WorkItemCommitDifferenceFunction
             var method = new HttpMethod("POST");
             var request = new HttpRequestMessage(method, targetUrl)
             {
-                Content = new StringContent(status, Encoding.UTF8, "application/json")
+                Content = new StringContent(message, Encoding.UTF8, "application/json")
             };
 
             using (HttpResponseMessage response = client.SendAsync(request).Result)
@@ -240,5 +226,45 @@ public static class WorkItemCommitDifferenceFunction
                 response.EnsureSuccessStatusCode();
             }
         }
+    }
+
+    private static void PostStatusOnPullRequest(string org, string projectId, string repoId, string currentPrId, bool hasDiff, string accessToken)
+    {
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/statuses?api-version=7.0";
+
+        string state = !hasDiff ? "succeeded" : "pending";
+        string description = !hasDiff ? "No commits dependency lost detected" : "Detect commits dependency lost";
+        string status = JsonConvert.SerializeObject(
+            new
+            {
+                State = state,
+                Description = description,
+                TargetUrl = "https://visualstudio.microsoft.com",
+
+                Context = new
+                {
+                    Name = "PullRequest-workItemPRChecker",
+                    Genre = "pr-azure-function-ci"
+                }
+            });
+
+        PostToClient(targetUrl, status, accessToken);
+        return;
+    }
+
+    private static void PostCommentOnPullRequest(string org, string projectId, string repoId, string currentPrId, string responseMessage, string accessToken)
+    {
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/threads?api-version=7.0";
+        List<Comment> comments = new List<Comment>();
+        comments.Add(new Comment { parentCommentId = 0, content = responseMessage, contentType = 1 });
+        string requestBody = JsonConvert.SerializeObject(
+            new
+            {
+                Comments = comments,
+                status = 1
+            });
+
+        PostToClient(targetUrl, requestBody, accessToken);
+        return;
     }
 }
