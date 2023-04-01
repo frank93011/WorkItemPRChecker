@@ -103,7 +103,7 @@ public static class WorkItemCommitDifferenceFunction
                 var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
                 hasDiff |= res.Item1;
                 responseMessage += res.Item2;
-                responseMessage += "--------------\n";
+                responseMessage += "\n";
             }
 
             log.Info($"{responseMessage}");
@@ -116,7 +116,7 @@ public static class WorkItemCommitDifferenceFunction
         catch (Exception ex)
         {
             log.Error(ex.ToString());
-            return new ObjectResult(HttpStatusCode.InternalServerError + ex.ToString());
+            return new BadRequestObjectResult(ex.ToString());
         }
     }
 
@@ -200,7 +200,7 @@ public static class WorkItemCommitDifferenceFunction
         {
             if (branchTotalCommits.Contains(commitId)) continue;
             hasDiff = true;
-            commitDiffMessege += commitId + "\n";
+            commitDiffMessege += $"- {commitId} \n";
         }
         string message = hasDiff ? commitDiffMessege : $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
         return new Tuple<bool, string>(hasDiff, message);
