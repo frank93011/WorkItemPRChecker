@@ -232,7 +232,7 @@ public static class WorkItemCommitDifferenceFunction
     {
         string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/statuses?api-version=7.0";
 
-        string state = !hasDiff ? "succeeded" : "pending";
+        string state = !hasDiff ? "succeeded" : "failed";
         string description = !hasDiff ? "No commits dependency lost detected" : "Detect commits dependency lost";
         string status = JsonConvert.SerializeObject(
             new
