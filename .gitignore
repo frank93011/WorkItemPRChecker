@@ -266,3 +266,4 @@ __pycache__/
 *.env
 test.json
 post.sh
+*.drawio
