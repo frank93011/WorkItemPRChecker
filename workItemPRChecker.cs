@@ -146,7 +146,7 @@ public static class WorkItemCommitDifferenceFunction
 
     private static async Task<List<string>> GetRelatedCommitsFromPRs(List<string> pullRequestIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
     {
-        List<string> relatedCommits = new List<string>();
+        HashSet<string> relatedCommits = new HashSet<string>();
         foreach (var prId in pullRequestIds)
         {
             if (prId == currentPrId) continue;
@@ -156,7 +156,7 @@ public static class WorkItemCommitDifferenceFunction
                 relatedCommits.Add(commit.commitId);
             });
         }
-        return relatedCommits;
+        return relatedCommits.ToList();
     }
 
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
