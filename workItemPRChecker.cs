@@ -22,6 +22,15 @@ public class CommitResponse
 public class Commit
 {
     public string commitId { get; set; }
+    public string comment { get; set; }
+    public string url { get; set; }
+    public Author author { get; set; }
+}
+
+public class Author
+{
+    public string name { get; set; }
+    public string date { get; set; }
 }
 
 public class WorkItemResponse
@@ -79,11 +88,13 @@ public static class WorkItemCommitDifferenceFunction
 
             var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
             var pullRequestIds = await GetPullRequestIdsFromWorkItems(workItems, organization, projectId, PAT);
-            List<string> relatedCommits = await GetRelatedCommitsFromPRs(pullRequestIds, currentPrId, organization, projectId, repoId, PAT);
+            var relatedCommitsResponse = await GetRelatedCommitsAndEarliestDateFromPRs(pullRequestIds, currentPrId, organization, projectId, repoId, PAT);
+            List<Commit> relatedCommits = relatedCommitsResponse.Item1;
+            string earliestCommitDate = relatedCommitsResponse.Item2;
 
             foreach (string targetBranch in targetBranchs)
             {
-                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
+                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, earliestCommitDate, organization, projectId, repoId, targetBranch, currentBranch, PAT);
                 hasDiff |= res.Item1;
                 responseMessage += res.Item2;
                 responseMessage += "\n";
@@ -167,19 +178,22 @@ public static class WorkItemCommitDifferenceFunction
         return commitResponse.value;
     }
 
-    private static async Task<List<string>> GetRelatedCommitsFromPRs(List<string> pullRequestIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
+    private static async Task<Tuple<List<Commit>, string>> GetRelatedCommitsAndEarliestDateFromPRs(List<string> pullRequestIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
     {
-        HashSet<string> relatedCommits = new HashSet<string>();
+        HashSet<Commit> relatedCommits = new HashSet<Commit>();
+        DateTime earliestCommitDate = DateTime.MaxValue;
         foreach (var prId in pullRequestIds)
         {
             if (prId == currentPrId) continue;
             var commits = await GetCommitsFromPR(org, projectId, repoId, prId, accessToken);
             commits.ForEach(commit =>
             {
-                relatedCommits.Add(commit.commitId);
+                relatedCommits.Add(commit);
+                DateTime commitTime = Convert.ToDateTime(commit.author.date);
+                earliestCommitDate = commitTime < earliestCommitDate ? commitTime : earliestCommitDate;
             });
         }
-        return relatedCommits.ToList();
+        return new Tuple<List<Commit>, string>(relatedCommits.ToList(), earliestCommitDate.Date.ToString("s"));
     }
 
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
@@ -210,7 +224,7 @@ public static class WorkItemCommitDifferenceFunction
         return pullRequestIds;
     }
 
-    private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<string> currentCommits, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
+    private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<Commit> currentCommits, string earliestCommitDate, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
     {
         string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commitsBatch?api-version=7.0";
         string noDiffMessage = $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
@@ -219,6 +233,7 @@ public static class WorkItemCommitDifferenceFunction
         HashSet<string> branchCommits = new HashSet<string>();
         string requestBody = JsonConvert.SerializeObject(new
         {
+            FromDate = earliestCommitDate,
             itemVersion = new
             {
                 versionType = "branch",
@@ -229,12 +244,12 @@ public static class WorkItemCommitDifferenceFunction
         string responseBody = await PostToClientWithResponse(targetUrl, requestBody, accessToken);
         var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
 
-        commitResponse.value.ForEach(commit => { branchCommits.Add(commit.commitId); });
-        foreach (string commitId in currentCommits)
+        commitResponse.value.ForEach(commit => { branchCommits.Add(commit.comment); });
+        foreach (Commit commit in currentCommits)
         {
-            if (branchCommits.Contains(commitId)) continue;
+            if (branchCommits.Contains(commit.comment)) continue;
             hasDiff = true;
-            commitDiffMessege += $"- {commitId} \n";
+            commitDiffMessege += $"- [{commit.comment}]({commit.url}) \n";
         }
         string responseMessage = hasDiff ? commitDiffMessege : noDiffMessage;
         return new Tuple<bool, string>(hasDiff, responseMessage);
