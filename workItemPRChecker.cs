@@ -22,16 +22,6 @@ public class CommitResponse
 public class Commit
 {
     public string commitId { get; set; }
-    public string comment { get; set; }
-    public Author author { get; set; }
-    public string url { get; set; }
-}
-
-public class Author
-{
-    public string name { get; set; }
-    public string email { get; set; }
-    public string date { get; set; }
 }
 
 public class WorkItemResponse
@@ -121,7 +111,7 @@ public static class WorkItemCommitDifferenceFunction
     }
 
 
-    private static async Task<string> GetResponseStringFromClient(string url, string accessToken)
+    private static async Task<string> GetResponseFromClient(string url, string accessToken)
     {
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -135,10 +125,50 @@ public static class WorkItemCommitDifferenceFunction
         return responseBody;
     }
 
+    private static void PostToClient(string targetUrl, string message, string accessToken)
+    {
+        HttpClient client = new HttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
+                ASCIIEncoding.ASCII.GetBytes(
+                string.Format("{0}:{1}", "", accessToken))));
+
+        var method = new HttpMethod("POST");
+        var request = new HttpRequestMessage(method, targetUrl)
+        {
+            Content = new StringContent(message, Encoding.UTF8, "application/json")
+        };
+
+        using (HttpResponseMessage response = client.SendAsync(request).Result)
+        {
+            response.EnsureSuccessStatusCode();
+        }
+    }
+
+    private static async Task<string> PostToClientWithResponse(string targetUrl, string message, string accessToken)
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
+                ASCIIEncoding.ASCII.GetBytes(
+                string.Format("{0}:{1}", "", accessToken))));
+
+        var method = new HttpMethod("POST");
+        var request = new HttpRequestMessage(method, targetUrl)
+        {
+            Content = new StringContent(message, Encoding.UTF8, "application/json")
+        };
+
+        var response = client.SendAsync(request).Result;
+        response.EnsureSuccessStatusCode();
+        string responseBody = await response.Content.ReadAsStringAsync();
+        return responseBody;
+    }
+
     private static async Task<List<Commit>> GetCommitsFromPR(string org, string projectId, string repoId, string prId, string accessToken)
     {
         string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullRequests/{prId}/commits?api-version=7.0";
-        string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
+        string responseBody = await GetResponseFromClient(targetUrl, accessToken);
         var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
 
         return commitResponse.value;
@@ -162,7 +192,7 @@ public static class WorkItemCommitDifferenceFunction
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
     {
         string targetUrl = $"{pullRequestUrl}/workitems?api-version=7.0";
-        string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
+        string responseBody = await GetResponseFromClient(targetUrl, accessToken);
         var workItems = JsonConvert.DeserializeObject<WorkItemResponse>(responseBody);
         return workItems.value;
     }
@@ -173,7 +203,7 @@ public static class WorkItemCommitDifferenceFunction
         foreach (WorkItem item in workItems)
         {
             string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/wit/workitems/{item.id}?$expand=relations&api-version=7.0";
-            string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
+            string responseBody = await GetResponseFromClient(targetUrl, accessToken);
             dynamic pullRequests = JsonConvert.DeserializeObject(responseBody);
             foreach (var pr in pullRequests.relations)
             {
@@ -189,43 +219,32 @@ public static class WorkItemCommitDifferenceFunction
 
     private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<string> currentCommits, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
     {
-        HashSet<string> branchTotalCommits = new HashSet<string>();
+        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commitsBatch?api-version=7.0";
+        string noDiffMessage = $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
         string commitDiffMessege = $"[{targetBranch}] branch missing the following commits from linked workItems:\n";
         bool hasDiff = false;
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commits?searchCriteria.itemVersion.version={targetBranch}&api-version=7.0";
-        string responseBody = await GetResponseStringFromClient(targetUrl, accessToken);
-        CommitResponse rawCommits = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
-        rawCommits.value.ForEach(commit => { branchTotalCommits.Add(commit.commitId); });
+        HashSet<string> branchCommits = new HashSet<string>();
+        string requestBody = JsonConvert.SerializeObject(new
+        {
+            itemVersion = new
+            {
+                versionType = "branch",
+                version = targetBranch,
+            }
+        });
+
+        string responseBody = await PostToClientWithResponse(targetUrl, requestBody, accessToken);
+        var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
+
+        commitResponse.value.ForEach(commit => { branchCommits.Add(commit.commitId); });
         foreach (string commitId in currentCommits)
         {
-            if (branchTotalCommits.Contains(commitId)) continue;
+            if (branchCommits.Contains(commitId)) continue;
             hasDiff = true;
             commitDiffMessege += $"- {commitId} \n";
         }
-        string message = hasDiff ? commitDiffMessege : $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
-        return new Tuple<bool, string>(hasDiff, message);
-    }
-
-    private static void PostToClient(string targetUrl, string message, string accessToken)
-    {
-        using (HttpClient client = new HttpClient())
-        {
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
-                    ASCIIEncoding.ASCII.GetBytes(
-                    string.Format("{0}:{1}", "", accessToken))));
-
-            var method = new HttpMethod("POST");
-            var request = new HttpRequestMessage(method, targetUrl)
-            {
-                Content = new StringContent(message, Encoding.UTF8, "application/json")
-            };
-
-            using (HttpResponseMessage response = client.SendAsync(request).Result)
-            {
-                response.EnsureSuccessStatusCode();
-            }
-        }
+        string responseMessage = hasDiff ? commitDiffMessege : noDiffMessage;
+        return new Tuple<bool, string>(hasDiff, responseMessage);
     }
 
     private static void PostStatusOnPullRequest(string org, string projectId, string repoId, string currentPrId, bool hasDiff, string accessToken)
