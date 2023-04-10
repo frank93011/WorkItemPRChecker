@@ -56,17 +56,15 @@ public static class WorkItemCommitDifferenceFunction
     {
         try
         {
-            string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
-
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-
-            string eventType = req.Headers["X-GitHub-Event"];
+            // string eventType = req.Headers["X-GitHub-Event"];
             // if (eventType != "pull_request")
             // {
             //     return new BadRequestObjectResult("Not a pull request event.");
             // }
-
+            string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
+            string[] targetBranchs = System.Environment.GetEnvironmentVariable("TARGET_BRANCHES", EnvironmentVariableTarget.Process).Split(',');
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            dynamic data = JsonConvert.DeserializeObject(requestBody);
             string repositoryName = data.resource.repository.name;
             string pullRequestUrl = data.resource.url;
             string currentPrId = data.resource.pullRequestId;
@@ -76,18 +74,13 @@ public static class WorkItemCommitDifferenceFunction
             string projectId = data.resource.repository.project.id;
             string organization = repositoryUrl.Split('/')[3];
             string currentBranch = sourceRefName.Split('/')[2];
-
-            var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
-            log.LogInformation("workItems Received: " + workItems.ToString());
-
-            var pullRequestIds = await GetPullRequestIdsFromWorkItems(workItems, organization, projectId, PAT);
-            log.LogInformation("PRs Received: " + pullRequestIds.ToString());
-
-            List<string> relatedCommits = await GetRelatedCommitsFromPRs(pullRequestIds, currentPrId, organization, projectId, repoId, PAT);
-
-            string[] targetBranchs = { "main", "SIT", "PROD" };
             string responseMessage = "";
             bool hasDiff = false;
+
+            var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
+            var pullRequestIds = await GetPullRequestIdsFromWorkItems(workItems, organization, projectId, PAT);
+            List<string> relatedCommits = await GetRelatedCommitsFromPRs(pullRequestIds, currentPrId, organization, projectId, repoId, PAT);
+
             foreach (string targetBranch in targetBranchs)
             {
                 var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
