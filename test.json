@@ -1,18 +1,18 @@
 {
   "subscriptionId": "97bbcd06-f0f1-4443-9121-993137bdf1f9",
-  "notificationId": 8,
-  "id": "9abff4b6-e03c-4a99-b92f-a1c2d4b16ea9",
+  "notificationId": 11,
+  "id": "5ce4c2a8-7e5e-4c92-b471-3b96c29eda44",
   "eventType": "git.pullrequest.created",
   "publisherId": "tfs",
   "message": {
-    "text": "陳漢威 created pull request 26 (changeQueryMethod) in PRCheck\r\nhttps://dev.azure.com/sol-lee/Test/_git/PRCheck/",
-    "html": "陳漢威 created <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/26\">pull request 26</a> (changeQueryMethod) in <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/\">PRCheck</a>",
-    "markdown": "陳漢威 created [pull request 26](https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/26) (changeQueryMethod) in [PRCheck](https://dev.azure.com/sol-lee/Test/_git/PRCheck/)"
+    "text": "陳漢威 created pull request 29 (Move target branch dependency to environment variable) in PRCheck\r\nhttps://dev.azure.com/sol-lee/Test/_git/PRCheck/",
+    "html": "陳漢威 created <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/29\">pull request 29</a> (Move target branch dependency to environment variable) in <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/\">PRCheck</a>",
+    "markdown": "陳漢威 created [pull request 29](https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/29) (Move target branch dependency to environment variable) in [PRCheck](https://dev.azure.com/sol-lee/Test/_git/PRCheck/)"
   },
   "detailedMessage": {
-    "text": "陳漢威 created pull request 26 (changeQueryMethod) in PRCheck\r\nhttps://dev.azure.com/sol-lee/Test/_git/PRCheck/\r\nchangeQueryMethod\r\n",
-    "html": "陳漢威 created <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/26\">pull request 26</a> (changeQueryMethod) in <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/\">PRCheck</a><p>changeQueryMethod</p>",
-    "markdown": "陳漢威 created [pull request 26](https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/26) (changeQueryMethod) in [PRCheck](https://dev.azure.com/sol-lee/Test/_git/PRCheck/)\r\nchangeQueryMethod\r\n"
+    "text": "陳漢威 created pull request 29 (Move target branch dependency to environment variable) in PRCheck\r\nhttps://dev.azure.com/sol-lee/Test/_git/PRCheck/\r\nMove target branch dependency to environment variable\r\n",
+    "html": "陳漢威 created <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/29\">pull request 29</a> (Move target branch dependency to environment variable) in <a href=\"https://dev.azure.com/sol-lee/Test/_git/PRCheck/\">PRCheck</a><p>Move target branch dependency to environment variable</p>",
+    "markdown": "陳漢威 created [pull request 29](https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/29) (Move target branch dependency to environment variable) in [PRCheck](https://dev.azure.com/sol-lee/Test/_git/PRCheck/)\r\nMove target branch dependency to environment variable\r\n"
   },
   "resource": {
     "repository": {
@@ -29,15 +29,15 @@
         "visibility": "private",
         "lastUpdateTime": "2019-06-05T09:40:57.72Z"
       },
-      "size": 726,
+      "size": 171130,
       "remoteUrl": "https://sol-lee@dev.azure.com/sol-lee/Test/_git/PRCheck",
       "sshUrl": "git@ssh.dev.azure.com:v3/sol-lee/Test/PRCheck",
       "webUrl": "https://dev.azure.com/sol-lee/Test/_git/PRCheck",
       "isDisabled": false,
       "isInMaintenance": false
     },
-    "pullRequestId": 26,
-    "codeReviewId": 26,
+    "pullRequestId": 29,
+    "codeReviewId": 29,
     "status": "active",
     "createdBy": {
       "displayName": "陳漢威",
@@ -52,40 +52,40 @@
       "imageUrl": "https://dev.azure.com/sol-lee/_api/_common/identityImage?id=3833ce4a-c8f2-4dbb-ba5b-050047fdc18a",
       "descriptor": "aad.NmJiZjY4NzktZDY2Zi03ODEyLTg5YzktNWUwZTg0Y2FkNzQy"
     },
-    "creationDate": "2023-04-09T02:13:00.4985027Z",
-    "title": "changeQueryMethod",
-    "description": "changeQueryMethod",
-    "sourceRefName": "refs/heads/DEV",
+    "creationDate": "2023-04-10T07:31:36.550544Z",
+    "title": "Move target branch dependency to environment variable",
+    "description": "Move target branch dependency to environment variable",
+    "sourceRefName": "refs/heads/SIT",
     "targetRefName": "refs/heads/main",
     "mergeStatus": "succeeded",
     "isDraft": false,
-    "mergeId": "6ba6d97e-385e-4c3b-9b53-34eb8c4cd1f2",
+    "mergeId": "81de2c03-8b92-49da-98c9-c553906ef124",
     "lastMergeSourceCommit": {
-      "commitId": "df19b3e84e64a4d91dac7592a2d6d3e41722b1c3",
-      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/df19b3e84e64a4d91dac7592a2d6d3e41722b1c3"
+      "commitId": "fd779dea4110867a26a0fd02aeeb355764ffd00c",
+      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/fd779dea4110867a26a0fd02aeeb355764ffd00c"
     },
     "lastMergeTargetCommit": {
-      "commitId": "fc926e0d403bded44adc9a383623dc3493f94861",
-      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/fc926e0d403bded44adc9a383623dc3493f94861"
+      "commitId": "13c74bf1b3249ea65a7864d4e78dc7ec628c1735",
+      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/13c74bf1b3249ea65a7864d4e78dc7ec628c1735"
     },
     "lastMergeCommit": {
-      "commitId": "dee5a2627dda0e6258da4b641ef88f586bfda8cb",
+      "commitId": "f5f9daee9c3250cc8ca1856689177350c94694ac",
       "author": {
         "name": "陳漢威",
         "email": "hac11@hi.is",
-        "date": "2023-04-09T02:13:04Z"
+        "date": "2023-04-10T07:31:37Z"
       },
       "committer": {
         "name": "陳漢威",
         "email": "hac11@hi.is",
-        "date": "2023-04-09T02:13:04Z"
+        "date": "2023-04-10T07:31:37Z"
       },
-      "comment": "Merge pull request 26 from DEV into main",
-      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/dee5a2627dda0e6258da4b641ef88f586bfda8cb"
+      "comment": "Merge pull request 29 from SIT into main",
+      "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/commits/f5f9daee9c3250cc8ca1856689177350c94694ac"
     },
     "reviewers": [
       {
-        "reviewerUrl": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/26/reviewers/3833ce4a-c8f2-4dbb-ba5b-050047fdc18a",
+        "reviewerUrl": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/29/reviewers/3833ce4a-c8f2-4dbb-ba5b-050047fdc18a",
         "vote": 0,
         "hasDeclined": false,
         "isFlagged": false,
@@ -101,17 +101,17 @@
         "imageUrl": "https://dev.azure.com/sol-lee/_api/_common/identityImage?id=3833ce4a-c8f2-4dbb-ba5b-050047fdc18a"
       }
     ],
-    "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/26",
+    "url": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/29",
     "_links": {
       "web": {
-        "href": "https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/26"
+        "href": "https://dev.azure.com/sol-lee/Test/_git/PRCheck/pullrequest/29"
       },
       "statuses": {
-        "href": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/26/statuses"
+        "href": "https://dev.azure.com/sol-lee/4b33e4be-5306-43bf-9ffa-12179f919a2a/_apis/git/repositories/280d83e7-4b98-42d5-8705-f6c824ec28d9/pullRequests/29/statuses"
       }
     },
     "supportsIterations": true,
-    "artifactId": "vstfs:///Git/PullRequestId/4b33e4be-5306-43bf-9ffa-12179f919a2a%2f280d83e7-4b98-42d5-8705-f6c824ec28d9%2f26"
+    "artifactId": "vstfs:///Git/PullRequestId/4b33e4be-5306-43bf-9ffa-12179f919a2a%2f280d83e7-4b98-42d5-8705-f6c824ec28d9%2f29"
   },
   "resourceVersion": "1.0",
   "resourceContainers": {
@@ -128,5 +128,5 @@
       "baseUrl": "https://dev.azure.com/sol-lee/"
     }
   },
-  "createdDate": "2023-04-09T02:13:11.6662286Z"
+  "createdDate": "2023-04-10T07:31:48.6553646Z"
 }
