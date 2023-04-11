@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 public class Info
 {
@@ -90,7 +91,6 @@ public static class WorkItemCommitDifferenceFunction
 
             Info info = new Info();
             info.PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
-            info.targetBranchs = System.Environment.GetEnvironmentVariable("TARGET_BRANCHES", EnvironmentVariableTarget.Process).Split(',').ToList();
             info.repositoryName = data.resource.repository.name;
             info.pullRequestUrl = data.resource.url;
             info.currentPrId = data.resource.pullRequestId;
@@ -98,6 +98,7 @@ public static class WorkItemCommitDifferenceFunction
             info.projectId = data.resource.repository.project.id;
             info.organization = data.resource.repository.url.ToString().Split('/')[3];
             info.currentBranch = data.resource.sourceRefName.ToString().Split('/')[2];
+            info.targetBranchs = ComputeTargetBranches(info.currentBranch);
             info.hasDiff = false;
 
             var workItems = await GetWorkItemsFromPR(info);
@@ -128,7 +129,25 @@ public static class WorkItemCommitDifferenceFunction
         }
     }
 
+    private static List<string> RetrieveTargetBranches(string key)
+    {
+        string rawTargetBranches = System.Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Process);
+        List<string> targetBranches = Regex.Replace(rawTargetBranches, @"\s+", "").Split(',').ToList();
+        return targetBranches;
+    }
 
+    private static List<string> ComputeTargetBranches(string currentBranch)
+    {
+        string g1p = System.Environment.GetEnvironmentVariable("GROUP_1_PREFIX", EnvironmentVariableTarget.Process);
+        string g2p = System.Environment.GetEnvironmentVariable("GROUP_2_PREFIX", EnvironmentVariableTarget.Process);
+        string g3p = System.Environment.GetEnvironmentVariable("GROUP_3_PREFIX", EnvironmentVariableTarget.Process);
+
+        if (currentBranch.Contains(g1p)) return RetrieveTargetBranches("GROUP_1_BRANCHES");
+        if (currentBranch.Contains(g2p)) return RetrieveTargetBranches("GROUP_2_BRANCHES");
+        if (currentBranch.Contains(g3p)) return RetrieveTargetBranches("GROUP_3_BRANCHES");
+        return RetrieveTargetBranches("GROUP_OTHER_BRANCHES");
+
+    }
     private static async Task<string> GetResponseFromClient(string url, string accessToken)
     {
         using var client = new HttpClient();
