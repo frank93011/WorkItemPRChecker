@@ -12,6 +12,22 @@ using System.Collections.Generic;
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
+
+public class Info
+{
+    public string PAT { get; set; }
+    public List<string> targetBranchs { get; set; }
+    public string repositoryName { get; set; }
+    public string pullRequestUrl { get; set; }
+    public string currentPrId { get; set; }
+    public string organization { get; set; }
+    public string projectId { get; set; }
+    public string repoId { get; set; }
+    public string currentBranch { get; set; }
+    public string responseMessage { get; set; }
+    public bool hasDiff { get; set; }
+}
 
 public class CommitResponse
 {
@@ -22,6 +38,15 @@ public class CommitResponse
 public class Commit
 {
     public string commitId { get; set; }
+    public string comment { get; set; }
+    public string url { get; set; }
+    public Author author { get; set; }
+}
+
+public class Author
+{
+    public string name { get; set; }
+    public string date { get; set; }
 }
 
 public class WorkItemResponse
@@ -61,40 +86,41 @@ public static class WorkItemCommitDifferenceFunction
             // {
             //     return new BadRequestObjectResult("Not a pull request event.");
             // }
-            string PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
-            string[] targetBranchs = System.Environment.GetEnvironmentVariable("TARGET_BRANCHES", EnvironmentVariableTarget.Process).Split(',');
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
-            string repositoryName = data.resource.repository.name;
-            string pullRequestUrl = data.resource.url;
-            string currentPrId = data.resource.pullRequestId;
-            string sourceRefName = data.resource.sourceRefName;
-            string repositoryUrl = data.resource.repository.url;
-            string repoId = data.resource.repository.id;
-            string projectId = data.resource.repository.project.id;
-            string organization = repositoryUrl.Split('/')[3];
-            string currentBranch = sourceRefName.Split('/')[2];
-            string responseMessage = "";
-            bool hasDiff = false;
 
-            var workItems = await GetWorkItemsFromPR(pullRequestUrl, PAT);
-            var pullRequestIds = await GetPullRequestIdsFromWorkItems(workItems, organization, projectId, PAT);
-            List<string> relatedCommits = await GetRelatedCommitsFromPRs(pullRequestIds, currentPrId, organization, projectId, repoId, PAT);
+            Info info = new Info();
+            info.PAT = System.Environment.GetEnvironmentVariable("PAT", EnvironmentVariableTarget.Process);
+            info.repositoryName = data.resource.repository.name;
+            info.pullRequestUrl = data.resource.url;
+            info.currentPrId = data.resource.pullRequestId;
+            info.repoId = data.resource.repository.id;
+            info.projectId = data.resource.repository.project.id;
+            info.organization = data.resource.repository.url.ToString().Split('/')[3];
+            info.currentBranch = data.resource.sourceRefName.ToString().Split('/')[2];
+            info.targetBranchs = ComputeTargetBranches(info.currentBranch);
+            info.hasDiff = false;
 
-            foreach (string targetBranch in targetBranchs)
+            var workItems = await GetWorkItemsFromPR(info);
+            var pullRequestIds = await GetPullRequestIdsFromWorkItems(workItems, info);
+            var relatedCommitsResponse = await GetRelatedCommitsAndEarliestDateFromPRs(pullRequestIds, info);
+            List<Commit> relatedCommits = relatedCommitsResponse.Item1;
+            string earliestCommitDate = relatedCommitsResponse.Item2;
+
+            foreach (string targetBranch in info.targetBranchs)
             {
-                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, organization, projectId, repoId, targetBranch, currentBranch, PAT);
-                hasDiff |= res.Item1;
-                responseMessage += res.Item2;
-                responseMessage += "\n";
+                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, earliestCommitDate, targetBranch, info);
+                info.hasDiff |= res.Item1;
+                info.responseMessage += res.Item2;
+                info.responseMessage += "\n";
             }
 
-            log.LogInformation($"{responseMessage}");
+            log.LogInformation($"{info.responseMessage}");
 
-            PostStatusOnPullRequest(organization, projectId, repoId, currentPrId, hasDiff, PAT);
-            if (hasDiff) PostCommentOnPullRequest(organization, projectId, repoId, currentPrId, responseMessage, PAT);
+            PostStatusOnPullRequest(info);
+            if (info.hasDiff) PostCommentOnPullRequest(info);
 
-            return new OkObjectResult($"{responseMessage}");
+            return new OkObjectResult($"{info.responseMessage}");
         }
         catch (Exception ex)
         {
@@ -103,7 +129,25 @@ public static class WorkItemCommitDifferenceFunction
         }
     }
 
+    private static List<string> RetrieveTargetBranches(string key)
+    {
+        string rawTargetBranches = System.Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Process);
+        List<string> targetBranches = Regex.Replace(rawTargetBranches, @"\s+", "").Split(',').ToList();
+        return targetBranches;
+    }
 
+    private static List<string> ComputeTargetBranches(string currentBranch)
+    {
+        string g1p = System.Environment.GetEnvironmentVariable("GROUP_1_PREFIX", EnvironmentVariableTarget.Process);
+        string g2p = System.Environment.GetEnvironmentVariable("GROUP_2_PREFIX", EnvironmentVariableTarget.Process);
+        string g3p = System.Environment.GetEnvironmentVariable("GROUP_3_PREFIX", EnvironmentVariableTarget.Process);
+
+        if (currentBranch.Contains(g1p)) return RetrieveTargetBranches("GROUP_1_BRANCHES");
+        if (currentBranch.Contains(g2p)) return RetrieveTargetBranches("GROUP_2_BRANCHES");
+        if (currentBranch.Contains(g3p)) return RetrieveTargetBranches("GROUP_3_BRANCHES");
+        return RetrieveTargetBranches("GROUP_OTHER_BRANCHES");
+
+    }
     private static async Task<string> GetResponseFromClient(string url, string accessToken)
     {
         using var client = new HttpClient();
@@ -158,45 +202,48 @@ public static class WorkItemCommitDifferenceFunction
         return responseBody;
     }
 
-    private static async Task<List<Commit>> GetCommitsFromPR(string org, string projectId, string repoId, string prId, string accessToken)
+    private static async Task<List<Commit>> GetCommitsFromPR(Info info, string prId)
     {
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullRequests/{prId}/commits?api-version=7.0";
-        string responseBody = await GetResponseFromClient(targetUrl, accessToken);
+        string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/git/repositories/{info.repoId}/pullRequests/{prId}/commits?api-version=7.0";
+        string responseBody = await GetResponseFromClient(targetUrl, info.PAT);
         var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
 
         return commitResponse.value;
     }
 
-    private static async Task<List<string>> GetRelatedCommitsFromPRs(List<string> pullRequestIds, string currentPrId, string org, string projectId, string repoId, string accessToken)
+    private static async Task<Tuple<List<Commit>, string>> GetRelatedCommitsAndEarliestDateFromPRs(List<string> pullRequestIds, Info info)
     {
-        HashSet<string> relatedCommits = new HashSet<string>();
+        HashSet<Commit> relatedCommits = new HashSet<Commit>();
+        DateTime earliestCommitDate = DateTime.MaxValue;
         foreach (var prId in pullRequestIds)
         {
-            if (prId == currentPrId) continue;
-            var commits = await GetCommitsFromPR(org, projectId, repoId, prId, accessToken);
+            if (prId == info.currentPrId) continue;
+            var commits = await GetCommitsFromPR(info, prId);
             commits.ForEach(commit =>
             {
-                relatedCommits.Add(commit.commitId);
+                relatedCommits.Add(commit);
+                DateTime commitTime = Convert.ToDateTime(commit.author.date);
+                earliestCommitDate = commitTime < earliestCommitDate ? commitTime : earliestCommitDate;
             });
         }
-        return relatedCommits.ToList();
+        return new Tuple<List<Commit>, string>(relatedCommits.ToList(), earliestCommitDate.Date.ToString("s"));
     }
 
-    private static async Task<List<WorkItem>> GetWorkItemsFromPR(string pullRequestUrl, string accessToken)
+    private static async Task<List<WorkItem>> GetWorkItemsFromPR(Info info)
     {
-        string targetUrl = $"{pullRequestUrl}/workitems?api-version=7.0";
-        string responseBody = await GetResponseFromClient(targetUrl, accessToken);
+        string targetUrl = $"{info.pullRequestUrl}/workitems?api-version=7.0";
+        string responseBody = await GetResponseFromClient(targetUrl, info.PAT);
         var workItems = JsonConvert.DeserializeObject<WorkItemResponse>(responseBody);
         return workItems.value;
     }
 
-    private static async Task<List<string>> GetPullRequestIdsFromWorkItems(List<WorkItem> workItems, string org, string projectId, string accessToken)
+    private static async Task<List<string>> GetPullRequestIdsFromWorkItems(List<WorkItem> workItems, Info info)
     {
         List<string> pullRequestIds = new List<string>();
         foreach (WorkItem item in workItems)
         {
-            string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/wit/workitems/{item.id}?$expand=relations&api-version=7.0";
-            string responseBody = await GetResponseFromClient(targetUrl, accessToken);
+            string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/wit/workitems/{item.id}?$expand=relations&api-version=7.0";
+            string responseBody = await GetResponseFromClient(targetUrl, info.PAT);
             dynamic pullRequests = JsonConvert.DeserializeObject(responseBody);
             foreach (var pr in pullRequests.relations)
             {
@@ -210,15 +257,16 @@ public static class WorkItemCommitDifferenceFunction
         return pullRequestIds;
     }
 
-    private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<string> currentCommits, string org, string projectId, string repoId, string targetBranch, string currentBranch, string accessToken)
+    private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<Commit> currentCommits, string earliestCommitDate, string targetBranch, Info info)
     {
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/commitsBatch?api-version=7.0";
+        string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/git/repositories/{info.repoId}/commitsBatch?api-version=7.0";
         string noDiffMessage = $"[{targetBranch}] branch has no linked workItem related commits difference.\n";
         string commitDiffMessege = $"[{targetBranch}] branch missing the following commits from linked workItems:\n";
         bool hasDiff = false;
         HashSet<string> branchCommits = new HashSet<string>();
         string requestBody = JsonConvert.SerializeObject(new
         {
+            FromDate = earliestCommitDate,
             itemVersion = new
             {
                 versionType = "branch",
@@ -226,26 +274,26 @@ public static class WorkItemCommitDifferenceFunction
             }
         });
 
-        string responseBody = await PostToClientWithResponse(targetUrl, requestBody, accessToken);
+        string responseBody = await PostToClientWithResponse(targetUrl, requestBody, info.PAT);
         var commitResponse = JsonConvert.DeserializeObject<CommitResponse>(responseBody);
 
-        commitResponse.value.ForEach(commit => { branchCommits.Add(commit.commitId); });
-        foreach (string commitId in currentCommits)
+        commitResponse.value.ForEach(commit => { branchCommits.Add(commit.comment); });
+        foreach (Commit commit in currentCommits)
         {
-            if (branchCommits.Contains(commitId)) continue;
+            if (branchCommits.Contains(commit.comment)) continue;
             hasDiff = true;
-            commitDiffMessege += $"- {commitId} \n";
+            commitDiffMessege += $"- [{commit.comment}]({commit.url}) \n";
         }
         string responseMessage = hasDiff ? commitDiffMessege : noDiffMessage;
         return new Tuple<bool, string>(hasDiff, responseMessage);
     }
 
-    private static void PostStatusOnPullRequest(string org, string projectId, string repoId, string currentPrId, bool hasDiff, string accessToken)
+    private static void PostStatusOnPullRequest(Info info)
     {
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/statuses?api-version=7.0";
+        string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/git/repositories/{info.repoId}/pullrequests/{info.currentPrId}/statuses?api-version=7.0";
 
-        string state = !hasDiff ? "succeeded" : "failed";
-        string description = !hasDiff ? "No commits dependency lost detected" : "Detect commits dependency lost";
+        string state = !info.hasDiff ? "succeeded" : "failed";
+        string description = !info.hasDiff ? "No commits dependency lost detected" : "Detect commits dependency lost";
         string status = JsonConvert.SerializeObject(
             new
             {
@@ -260,15 +308,15 @@ public static class WorkItemCommitDifferenceFunction
                 }
             });
 
-        PostToClient(targetUrl, status, accessToken);
+        PostToClient(targetUrl, status, info.PAT);
         return;
     }
 
-    private static void PostCommentOnPullRequest(string org, string projectId, string repoId, string currentPrId, string responseMessage, string accessToken)
+    private static void PostCommentOnPullRequest(Info info)
     {
-        string targetUrl = $"https://dev.azure.com/{org}/{projectId}/_apis/git/repositories/{repoId}/pullrequests/{currentPrId}/threads?api-version=7.0";
+        string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/git/repositories/{info.repoId}/pullrequests/{info.currentPrId}/threads?api-version=7.0";
         List<Comment> comments = new List<Comment>();
-        comments.Add(new Comment { parentCommentId = 0, content = responseMessage, contentType = 1 });
+        comments.Add(new Comment { parentCommentId = 0, content = info.responseMessage, contentType = 1 });
         string requestBody = JsonConvert.SerializeObject(
             new
             {
@@ -276,7 +324,7 @@ public static class WorkItemCommitDifferenceFunction
                 status = 1
             });
 
-        PostToClient(targetUrl, requestBody, accessToken);
+        PostToClient(targetUrl, requestBody, info.PAT);
         return;
     }
 }
