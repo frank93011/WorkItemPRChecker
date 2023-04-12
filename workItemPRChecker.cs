@@ -212,7 +212,7 @@ public static class WorkItemCommitDifferenceFunction
 
     private static async Task<Tuple<List<Commit>, string>> GetRelatedCommitsAndEarliestDateFromPRs(List<string> pullRequestIds, Info info)
     {
-        HashSet<Commit> relatedCommits = new HashSet<Commit>();
+        Dictionary<string, Commit> relatedCommits = new Dictionary<string, Commit>();
         DateTime earliestCommitDate = DateTime.MaxValue;
         foreach (var prId in pullRequestIds)
         {
@@ -220,12 +220,12 @@ public static class WorkItemCommitDifferenceFunction
             var commits = await GetCommitsFromPR(info, prId);
             commits.ForEach(commit =>
             {
-                relatedCommits.Add(commit);
+                if (!relatedCommits.ContainsKey(commit.comment)) relatedCommits.Add(commit.comment, commit);
                 DateTime commitTime = Convert.ToDateTime(commit.author.date);
                 earliestCommitDate = commitTime < earliestCommitDate ? commitTime : earliestCommitDate;
             });
         }
-        return new Tuple<List<Commit>, string>(relatedCommits.ToList(), earliestCommitDate.Date.ToString("s"));
+        return new Tuple<List<Commit>, string>(relatedCommits.Values.ToList(), earliestCommitDate.Date.ToString("s"));
     }
 
     private static async Task<List<WorkItem>> GetWorkItemsFromPR(Info info)
@@ -238,7 +238,7 @@ public static class WorkItemCommitDifferenceFunction
 
     private static async Task<List<string>> GetPullRequestIdsFromWorkItems(List<WorkItem> workItems, Info info)
     {
-        List<string> pullRequestIds = new List<string>();
+        HashSet<string> pullRequestIds = new HashSet<string>();
         foreach (WorkItem item in workItems)
         {
             string targetUrl = $"https://dev.azure.com/{info.organization}/{info.projectId}/_apis/wit/workitems/{item.id}?$expand=relations&api-version=7.0";
@@ -253,7 +253,7 @@ public static class WorkItemCommitDifferenceFunction
             }
         }
 
-        return pullRequestIds;
+        return pullRequestIds.ToList();
     }
 
     private static async Task<Tuple<bool, string>> CompareCommitsDiffWithTargetBranch(List<Commit> currentCommits, string earliestCommitDate, string targetBranch, Info info)
