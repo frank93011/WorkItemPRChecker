@@ -17,7 +17,7 @@ using System.Text.RegularExpressions;
 public class Info
 {
     public string PAT { get; set; }
-    public List<string> targetBranchs { get; set; }
+    public List<string> compareBranches { get; set; }
     public string repositoryName { get; set; }
     public string pullRequestUrl { get; set; }
     public string currentPrId { get; set; }
@@ -25,6 +25,7 @@ public class Info
     public string projectId { get; set; }
     public string repoId { get; set; }
     public string currentBranch { get; set; }
+    public string targetBranch { get; set; }
     public string responseMessage { get; set; }
     public bool hasDiff { get; set; }
 }
@@ -98,7 +99,8 @@ public static class WorkItemCommitDifferenceFunction
             info.projectId = data.resource.repository.project.id;
             info.organization = data.resource.repository.url.ToString().Split('/')[3];
             info.currentBranch = data.resource.sourceRefName.ToString().Split('/')[2];
-            info.targetBranchs = ComputeTargetBranches(info.currentBranch);
+            info.targetBranch = data.resource.targetRefName.ToString().Split('/')[2];
+            info.compareBranches = ComputeCompareBranches(info.targetBranch);
             info.hasDiff = false;
 
             var workItems = await GetWorkItemsFromPR(info);
@@ -107,9 +109,9 @@ public static class WorkItemCommitDifferenceFunction
             List<Commit> relatedCommits = relatedCommitsResponse.Item1;
             string earliestCommitDate = relatedCommitsResponse.Item2;
 
-            foreach (string targetBranch in info.targetBranchs)
+            foreach (string branch in info.compareBranches)
             {
-                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, earliestCommitDate, targetBranch, info);
+                var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, earliestCommitDate, branch, info);
                 info.hasDiff |= res.Item1;
                 info.responseMessage += res.Item2;
                 info.responseMessage += "\n";
@@ -129,24 +131,21 @@ public static class WorkItemCommitDifferenceFunction
         }
     }
 
-    private static List<string> RetrieveTargetBranches(string key)
+    private static List<string> RetrieveBranchesFromEnv(string key)
     {
         string rawTargetBranches = System.Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Process);
         List<string> targetBranches = Regex.Replace(rawTargetBranches, @"\s+", "").Split(',').ToList();
         return targetBranches;
     }
 
-    private static List<string> ComputeTargetBranches(string currentBranch)
+    private static List<string> ComputeCompareBranches(string targetBranch)
     {
-        string g1p = System.Environment.GetEnvironmentVariable("GROUP_1_PREFIX", EnvironmentVariableTarget.Process);
-        string g2p = System.Environment.GetEnvironmentVariable("GROUP_2_PREFIX", EnvironmentVariableTarget.Process);
-        string g3p = System.Environment.GetEnvironmentVariable("GROUP_3_PREFIX", EnvironmentVariableTarget.Process);
+        List<string> group1 = RetrieveBranchesFromEnv("GROUP_1_TRIGGER");
+        List<string> group2 = RetrieveBranchesFromEnv("GROUP_2_TRIGGER");
 
-        if (currentBranch.Contains(g1p)) return RetrieveTargetBranches("GROUP_1_BRANCHES");
-        if (currentBranch.Contains(g2p)) return RetrieveTargetBranches("GROUP_2_BRANCHES");
-        if (currentBranch.Contains(g3p)) return RetrieveTargetBranches("GROUP_3_BRANCHES");
-        return RetrieveTargetBranches("GROUP_OTHER_BRANCHES");
-
+        if (group1.Contains(targetBranch)) return RetrieveBranchesFromEnv("GROUP_1_TARGET");
+        if (group2.Contains(targetBranch)) return RetrieveBranchesFromEnv("GROUP_2_TARGET");
+        return RetrieveBranchesFromEnv("GROUP_OTHER_BRANCHES");
     }
     private static async Task<string> GetResponseFromClient(string url, string accessToken)
     {
