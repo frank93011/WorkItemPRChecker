@@ -4,7 +4,9 @@
 
 The Azure function that can detect the pull requests linked to work items has any commit dependency loss on the target branch.
 
-### Set-Up
+## Set-Up
+
+### Environment
 
 1. Following the [official document](https://learn.microsoft.com/en-us/azure/azure-functions/create-first-function-vs-code-csharp?tabs=in-process) to set up an HTTP Triggered function example in VSCode. Here we use `.NET 6.0` as this project’s developing environment.
 2. Create & deploy the function in Azure, and retrieve the URL of the function.
@@ -15,11 +17,23 @@ The Azure function that can detect the pull requests linked to work items has an
    3. **Work Items**: Read
 5. Go to the Azure `Function App / Configuration / Applicaiton settings` section to add the PAT into environment variable for the function app.
 
-### Design Detail
+### Setting trigger branch groups and target branches
+
+Go to [Function App / Configuration / Applicaiton settings](https://ms.portal.azure.com/#@microsoft.onmicrosoft.com/resource/subscriptions/5b03f98c-282c-4ebc-9660-138f9cbf847b/resourceGroups/poc-cdfh-kgib/providers/Microsoft.Web/sites/func-poc-cdfh-kgib/configuration) and set up the variable likes:
+
+```
+    "GROUP_1_TRIGGER":"sit-r22, rc-043",
+    "GROUP_1_TARGET": "sit-r22, rc-043, sit-r23, rc-044, master, sit",
+    "GROUP_2_TRIGGER":"sit-r23, rc-044",
+    "GROUP_2_TARGET": "sit-r23, rc-044, master, sit",
+    "GROUP_OTHER_BRANCHES": "master, sit"
+```
+
+## Design Detail
 
 ![design.png](./image/design.png)
 
-### API Documents
+## API Documents
 
 - [Query work items from pull request](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-work-items/list?view=azure-devops-rest-7.0)
 - [Query linked pull requests from work item](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/get-work-item?view=azure-devops-rest-7.0&tabs=HTTP)
@@ -27,7 +41,3 @@ The Azure function that can detect the pull requests linked to work items has an
 - [Query all commits from target branch (use ?searchCriteria.itemVersion.version={targetBranch} as parameter)](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/commits/get-commits?view=azure-devops-rest-7.0&tabs=HTTP)
 - [Create check result status on pull request page](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-statuses/create?view=azure-devops-rest-7.0&tabs=HTTP)
 - [Create new comment thread on pull request page](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.0&tabs=HTTP)
-
-### TEST AREA
-
-1
