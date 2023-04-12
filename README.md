@@ -27,3 +27,7 @@ The Azure function that can detect the pull requests linked to work items has an
 - [Query all commits from target branch (use ?searchCriteria.itemVersion.version={targetBranch} as parameter)](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/commits/get-commits?view=azure-devops-rest-7.0&tabs=HTTP)
 - [Create check result status on pull request page](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-statuses/create?view=azure-devops-rest-7.0&tabs=HTTP)
 - [Create new comment thread on pull request page](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.0&tabs=HTTP)
+
+### TEST AREA
+
+1
