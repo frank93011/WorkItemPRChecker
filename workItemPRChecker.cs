@@ -111,6 +111,7 @@ public static class WorkItemCommitDifferenceFunction
 
             foreach (string branch in info.compareBranches)
             {
+                if (branch == info.targetBranch) continue;
                 var res = await CompareCommitsDiffWithTargetBranch(relatedCommits, earliestCommitDate, branch, info);
                 info.hasDiff |= res.Item1;
                 info.responseMessage += res.Item2;
@@ -216,7 +217,6 @@ public static class WorkItemCommitDifferenceFunction
         DateTime earliestCommitDate = DateTime.MaxValue;
         foreach (var prId in pullRequestIds)
         {
-            // if (prId == info.currentPrId) continue;
             var commits = await GetCommitsFromPR(info, prId);
             commits.ForEach(commit =>
             {
