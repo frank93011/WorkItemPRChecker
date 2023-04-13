@@ -216,7 +216,7 @@ public static class WorkItemCommitDifferenceFunction
         DateTime earliestCommitDate = DateTime.MaxValue;
         foreach (var prId in pullRequestIds)
         {
-            if (prId == info.currentPrId) continue;
+            // if (prId == info.currentPrId) continue;
             var commits = await GetCommitsFromPR(info, prId);
             commits.ForEach(commit =>
             {
